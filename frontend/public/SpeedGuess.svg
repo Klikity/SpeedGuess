@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <circle cx="32" cy="34" r="26"
+          fill="#1a1a1d"
+          stroke="#ffd700"
+          stroke-width="4"/>
+
+  <line x1="32" y1="34"
+        x2="32" y2="12"
+        stroke="white"
+        stroke-width="3"/>
+
+  <line x1="32" y1="34"
+        x2="50" y2="30"
+        stroke="#ffd700"
+        stroke-width="3"/>
+
+  <rect x="27" y="0"
+        width="10"
+        height="6"
+        rx="2"
+        fill="#538d4e"/>
+</svg>
