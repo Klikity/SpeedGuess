@@ -60,6 +60,8 @@ h1 {
   letter-spacing: 0.5px;
 
   font-weight: 500;
+
+  text-align: center;
 }
 
 /* ===== LAYOUT ===== */
@@ -90,7 +92,7 @@ h1 {
 
   justify-content: space-between;
 
-  min-height: 80vh;
+  min-height: 100vh;
 
   align-items: center;
 }
@@ -169,18 +171,21 @@ h1 {
 
 .keyboard {
   margin-top: 8px;
+  width: 100%;
 }
 
 .keyboard-row {
   display: flex;
   justify-content: center;
-  gap: 6px;
+  width: 100%;
+  gap: 4px;
   margin-bottom: 8px;
 }
 
 .key {
   height: 48px;
-  min-width: 40px;
+  flex: 1;
+  min-width: unset;
   border: none;
   border-radius: 4px;
   background: #818384;
@@ -562,33 +567,47 @@ h1 {
   margin-top: 20px;
 }
 
+.mode-select {
+  width: 220px;
 
+  padding: 12px;
+
+  border: 1px solid #538d4e;
+  border-radius: 12px;
+
+  background: #1a1a1d;
+  color: white;
+
+  font-size: 18px;
+  font-weight: 700;
+}
 
 @media (max-width: 1000px) {
-
   .main-layout {
-    grid-template-columns: 1fr;
-    justify-items: center;
-  }
+    display: flex;
+    flex-direction: column;
 
-  .stats-panel {
-    width: 220px;
-    box-sizing: border-box;
-  }
-
-  .mode-switcher {
     align-items: center;
+
+    gap: 20px;
+
+    padding: 10px;
   }
 
-  .mode-switcher button {
-    width: 220px;
-    min-width: unset;
-  }
-
-  .daily-result-card {
+  .left-panel,
+  .stats-column {
     width: 100%;
     max-width: 320px;
+  }
+}
 
-    margin-left: 0;
+
+@media (max-width: 600px) {
+  h1 {
+    width: 100%;
+
+    font-size: 52px;
+
+    letter-spacing: 2px;
   }
 }
