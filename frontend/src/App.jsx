@@ -15,11 +15,16 @@ const defaultClassicStats = {
   played: 0,
   wins: 0,
   attempts: [0, 0, 0, 0, 0, 0],
+};
 
-  timedPlayed: 0,
-  timedWins: 0,
+const defaultTimedStats = {
+  played: 0,
+  wins: 0,
   bestTime: null,
-  totalTime: 0
+  totalTime: 0,
+  totalGuesses: 0,
+  totalPenalty: 0,
+  cleanWins: 0,
 };
 
 const defaultSpeedStats = {
@@ -28,6 +33,8 @@ const defaultSpeedStats = {
   bestTime: null,
   totalTime: 0,
   totalGuesses: 0,
+  totalPenalty: 0,
+  cleanWins: 0,
 };
 
 function getTodayKey() {
@@ -55,7 +62,9 @@ function getRandomWord() {
 }
 
 function App() {
-  const [mode, setMode] = useState("classic"); // "classic" or "speed"
+  const [mode, setMode] = useState(
+    () => localStorage.getItem("currentMode") || "classic"
+  );
 
   const [targetWord, setTargetWord] = useState(() => getRandomWord());
   const [guesses, setGuesses] = useState([]);
@@ -70,6 +79,11 @@ function App() {
   const [classicStats, setClassicStats] = useState(() => {
     const saved = localStorage.getItem("classicStats");
     return saved ? JSON.parse(saved) : defaultClassicStats;
+  });
+
+  const [timedStats, setTimedStats] = useState(() => {
+    const saved = localStorage.getItem("timedStats");
+    return saved ? JSON.parse(saved) : defaultTimedStats;
   });
 
   const [speedStats, setSpeedStats] = useState(() => {
@@ -99,6 +113,55 @@ function App() {
   const [showSpeedHelp, setShowSpeedHelp] = useState(() => {
     return !localStorage.getItem("speedHelpShown");
   });
+
+  const [savedGames, setSavedGames] = useState(() => {
+    const saved = localStorage.getItem("savedGames");
+
+    return saved
+      ? JSON.parse(saved)
+      : {
+          classic: null,
+          timed: null,
+          speed: null,
+        };
+  });
+
+  useEffect(() => {
+    localStorage.setItem(
+      "savedGames",
+      JSON.stringify(savedGames)
+    );
+  }, [savedGames]);
+  
+  useEffect(() => {
+    localStorage.setItem("timedStats", JSON.stringify(timedStats));
+  }, [timedStats]);
+
+  useEffect(() => {
+    setSavedGames(prev => ({
+      ...prev,
+
+      [mode]: {
+        targetWord,
+        guesses,
+        currentGuess,
+        elapsedTime:
+            startTime
+              ? Date.now() - startTime
+              : elapsedTime,
+        finalTime,
+        message,
+      }
+    }));
+  }, [
+    mode,
+    targetWord,
+    guesses,
+    currentGuess,
+    elapsedTime,
+    finalTime,
+    message,
+  ]);
 
   useEffect(() => {
     if (
@@ -130,6 +193,7 @@ function App() {
     if (!timerActive) return;
     if (!startTime) return;
     if (gameOver) return;
+    if (finalTime !== null) return;
 
     const interval = setInterval(() => {
       setElapsedTime(Date.now() - startTime);
@@ -140,7 +204,12 @@ function App() {
     mode,
     startTime,
     gameOver,
+    finalTime,
   ]);
+
+  useEffect(() => {
+    localStorage.setItem("currentMode", mode);
+  }, [mode]);
 
   useEffect(() => {
     if (
@@ -195,14 +264,56 @@ function App() {
     setCurrentGuess("");
     setMessage("");
 
-    setStartTime(null);
     setElapsedTime(0);
     setFinalTime(null);
   }
 
   function changeMode(newMode) {
+    const currentElapsed =
+      startTime && (mode === "speed" || mode === "timed") && finalTime === null
+        ? Date.now() - startTime
+        : elapsedTime;
+
+    const updatedSavedGames = {
+      ...savedGames,
+      [mode]: {
+        targetWord,
+        guesses,
+        currentGuess,
+        elapsedTime: currentElapsed,
+        finalTime,
+        message,
+      },
+    };
+
+    setSavedGames(updatedSavedGames);
+
+    const saved = updatedSavedGames[newMode];
+
+    if (saved) {
+      setTargetWord(saved.targetWord);
+      setGuesses(saved.guesses);
+      setCurrentGuess(saved.currentGuess);
+      setElapsedTime(saved.elapsedTime || 0);
+      setFinalTime(saved.finalTime);
+      setMessage(saved.message || "");
+
+      const shouldResumeTimer =
+        (newMode === "speed" || newMode === "timed") &&
+        saved.finalTime === null &&
+        saved.guesses.length > 0;
+
+      setStartTime(
+        shouldResumeTimer
+          ? Date.now() - (saved.elapsedTime || 0)
+          : null
+      );
+    } else {
+      resetGame(newMode);
+      setStartTime(null);
+    }
+
     setMode(newMode);
-    resetGame(newMode);
 
     if (
       newMode === "speed" &&
@@ -247,22 +358,6 @@ function App() {
     return result;
   }
 
-  function updateTimedClassicStats(totalTime) {
-    setClassicStats((prev) => ({
-      ...prev,
-
-      timedPlayed: prev.timedPlayed + 1,
-      timedWins: prev.timedWins + 1,
-
-      bestTime:
-        prev.bestTime === null
-          ? totalTime
-          : Math.min(prev.bestTime, totalTime),
-
-      totalTime: prev.totalTime + totalTime,
-    }));
-  }
-
   function updateClassicStatsAfterWin(newGuesses) {
     const attemptIndex = Math.min(newGuesses.length - 1, 5);
 
@@ -283,17 +378,39 @@ function App() {
     }));
   }
 
-  function updateSpeedStatsAfterWin(totalTime, guessesCount) {
-    setSpeedStats((prevStats) => ({
+  function updateTimedStatsAfterWin(totalTime, guessesCount, penalty) {
+    setTimedStats((prevStats) => ({
       ...prevStats,
       played: prevStats.played + 1,
       wins: prevStats.wins + 1,
+
       bestTime:
         prevStats.bestTime === null
           ? totalTime
           : Math.min(prevStats.bestTime, totalTime),
+
       totalTime: prevStats.totalTime + totalTime,
       totalGuesses: prevStats.totalGuesses + guessesCount,
+      totalPenalty: prevStats.totalPenalty + penalty,
+      cleanWins: prevStats.cleanWins + (penalty === 0 ? 1 : 0),
+    }));
+  }
+
+  function updateSpeedStatsAfterWin(totalTime, guessesCount, penalty) {
+    setSpeedStats((prevStats) => ({
+      ...prevStats,
+      played: prevStats.played + 1,
+      wins: prevStats.wins + 1,
+
+      bestTime:
+        prevStats.bestTime === null
+          ? totalTime
+          : Math.min(prevStats.bestTime, totalTime),
+
+      totalTime: prevStats.totalTime + totalTime,
+      totalGuesses: prevStats.totalGuesses + guessesCount,
+      totalPenalty: prevStats.totalPenalty + penalty,
+      cleanWins: prevStats.cleanWins + (penalty === 0 ? 1 : 0),
     }));
   }
 
@@ -415,7 +532,7 @@ function App() {
     if (!canvas) return;
 
     const link = document.createElement("a");
-    link.download = "speedguess.png";
+    link.download = "quirdle.png";
     link.href = canvas.toDataURL();
     link.click();
   }
@@ -461,7 +578,7 @@ function App() {
     if (guess === targetWord) {
       if (mode === "speed") {
         const realTime = startTime
-          ? (Date.now() - startTime)
+          ? Date.now() - startTime
           : 0;
 
         const extraGuesses = Math.max(0, newGuesses.length - MAX_ATTEMPTS);
@@ -479,23 +596,39 @@ function App() {
 
         setFinalTime(totalTime);
 
-        updateSpeedStatsAfterWin(totalTime, newGuesses.length);
+        updateSpeedStatsAfterWin(
+          totalTime,
+          newGuesses.length,
+          penalty
+        );
 
-      } else {
-        setMessage("Nice! You guessed it!");
-
-        updateClassicStatsAfterWin(newGuesses);
-
-        if (mode === "timed" && startTime) {
-          const totalTime =
-            Date.now() - startTime;
-
-          updateTimedClassicStats(totalTime);
-
-          setFinalTime(totalTime);
-        }
+        return;
       }
 
+      if (mode === "timed") {
+        const realTime = startTime
+          ? Date.now() - startTime
+          : 0;
+
+        const extraGuesses = Math.max(0, newGuesses.length - MAX_ATTEMPTS);
+        const penalty = extraGuesses * 20000;
+        const totalTime = realTime + penalty;
+
+        setFinalTime(totalTime);
+
+        updateTimedStatsAfterWin(
+          totalTime,
+          newGuesses.length,
+          penalty
+        );
+
+        setMessage(`Solved in ${formatTime(totalTime)}!`);
+
+        return;
+      }
+
+      setMessage("Nice! You guessed it!");
+      updateClassicStatsAfterWin(newGuesses);
 
       return;
     }
@@ -517,7 +650,7 @@ function App() {
       (mode === "speed" || mode === "timed")
       && !startTime
     ) {
-      setStartTime(Date.now());
+      setStartTime(Date.now() - elapsedTime);
     }
 
     if (currentGuess.length < WORD_LENGTH) {
@@ -586,30 +719,67 @@ function App() {
   function formatTime(ms) {
     const minutes = Math.floor(ms / 60000);
     const seconds = Math.floor((ms % 60000) / 1000);
-    const millis = ms % 1000;
+    const centiseconds = Math.floor((ms % 1000) / 100);
+
+    if (minutes === 0) {
+      return (
+        seconds +
+        "." +
+        String(centiseconds).padStart(1, "0")
+      );
+    }
 
     return (
-      String(minutes).padStart(2, "0") +
+      minutes +
       ":" +
       String(seconds).padStart(2, "0") +
       "." +
-      String(millis).padStart(3, "0")
+      String(centiseconds).padStart(1, "0")
+    );
+  }
+
+
+  function formatTimeStats(ms) {
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+
+    if (minutes === 0) {
+      return `${seconds}s`;
+    }
+
+    return (
+      minutes +
+      ":" +
+      String(seconds).padStart(2, "0")
     );
   }
 
   const keyboardStatuses = getKeyboardStatuses();
 
+  
+  const dailyCompletedToday =
+    mode === "speed" &&
+    lastResult &&
+    lastResult.date === getTodayKey();
+
   const visibleRows =
-    mode === "speed"
-      ? Math.max(
+    mode === "classic"
+      ? MAX_ATTEMPTS
+      : Math.max(
           MAX_ATTEMPTS,
-          guesses.length + (lastResult ? 0 : 1)
-        )
-      : MAX_ATTEMPTS;
+          guesses.length + (dailyCompletedToday ? 0 : 1)
+        );
+
 
   return (
     <div className="app">
-      <h1>SpeedGuess</h1>
+      <div className="title-container">
+        <h1>Quirdle</h1>
+      </div>
+
+      <p className="tagline">
+        A daily word challenge against the clock.
+      </p>
 
       <div className="main-layout">
         <div className="left-panel">
@@ -626,14 +796,14 @@ function App() {
               className={mode === "timed" ? "active" : ""}
               onClick={() => changeMode("timed")}
             >
-              SpeedGuess
+              Speed Run
             </button>
 
             <button
               className={mode === "speed" ? "active" : ""}
               onClick={() => changeMode("speed")}
             >
-              Daily SpeedGuess
+              Daily
             </button>
           </div>
 
@@ -646,6 +816,12 @@ function App() {
               <div className="speed-timer">
                 {formatTime(finalTime ?? elapsedTime)}
               </div>
+
+              {mode !== "classic" && guesses.length > 6 && (
+                <div className="penalty-display">
+                  +{(guesses.length - 6) * 20}s penalty
+                </div>
+              )}
             </div>
           )}
           
@@ -695,49 +871,53 @@ function App() {
         </div>
 
         <div className="game-area">
-          <div className="board">
-            {Array.from({ length: visibleRows }).map((_, rowIndex) => {
-              const guess = guesses[rowIndex];
+          
+          <div className="board-section">
 
-              let rowLetters = Array(WORD_LENGTH).fill("");
-              let rowStatuses = Array(WORD_LENGTH).fill("");
+            <div className="board">
+              {Array.from({ length: visibleRows }).map((_, rowIndex) => {
+                const guess = guesses[rowIndex];
 
-              if (guess) {
-                rowLetters = guess.toUpperCase().split("");
-                rowStatuses = evaluateGuess(guess);
-              } else if (rowIndex === guesses.length) {
-                rowLetters = currentGuess
-                  .toUpperCase()
-                  .padEnd(WORD_LENGTH)
-                  .split("");
-              }
+                let rowLetters = Array(WORD_LENGTH).fill("");
+                let rowStatuses = Array(WORD_LENGTH).fill("");
 
-              return (
-                <div className="row" key={rowIndex}>
-                  {rowLetters.map((letter, colIndex) => (
-                    <div
-                      key={colIndex}
-                      className={`tile ${
-                        guess ? `submitted ${rowStatuses[colIndex]}` : ""
-                      }`}
-                      style={{
-                        animationDelay: `${colIndex * 0.25}s`,
-                      }}
-                    >
-                      {letter.trim()}
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
+                if (guess) {
+                  rowLetters = guess.toUpperCase().split("");
+                  rowStatuses = evaluateGuess(guess);
+                } else if (rowIndex === guesses.length) {
+                  rowLetters = currentGuess
+                    .toUpperCase()
+                    .padEnd(WORD_LENGTH)
+                    .split("");
+                }
+
+                return (
+                  <div className="row" key={rowIndex}>
+                    {rowLetters.map((letter, colIndex) => (
+                      <div
+                        key={colIndex}
+                        className={`tile ${
+                          guess ? `submitted ${rowStatuses[colIndex]}` : ""
+                        }`}
+                        style={{
+                          animationDelay: `${colIndex * 0.25}s`,
+                        }}
+                      >
+                        {letter.trim()}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+            <p className="message">{message}</p>
+
+            {gameOver && mode !== "speed" && (
+              <button className="restart-button" onClick={restartGame}>
+                Restart game
+              </button>
+            )}
           </div>
-          <p className="message">{message}</p>
-
-          {gameOver && mode === "classic" && (
-            <button className="restart-button" onClick={restartGame}>
-              Restart game
-            </button>
-          )}
 
           <div className="keyboard">
             {keyboardRows.map((row, rowIndex) => (
@@ -767,165 +947,184 @@ function App() {
             className="stats-button"
             onClick={() => setShowStats(!showStats)}
           >
-            📊 Stats
+            My Stats
           </button>
 
           {showStats && (
-              <div className="stats-panel">
-                <h2>
-                  {mode === "classic"
-                    ? "🎯 Classic"
-                    : mode === "timed"
-                    ? "⏱️ SpeedGuess"
-                    : "🔥 Daily SpeedGuess"}
-                </h2>
+            <div className="stats-panel">
+              {mode === "classic" ? (
+                <>
+                  <div className="result-stat">
+                    <span>Played:</span>
+                    <strong>{classicStats.played}</strong>
+                  </div>
 
-                {mode === "classic" ? (
-                  <>
-                    <div className="result-stat">
-                      <span>Played:</span>
-                      <strong>{classicStats.played}</strong>
-                    </div>
+                  <div className="result-stat">
+                    <span>Wins:</span>
+                    <strong>{classicStats.wins}</strong>
+                  </div>
 
-                    <div className="result-stat">
-                      <span>Wins:</span>
-                      <strong>{classicStats.wins}</strong>
-                    </div>
+                  <div className="result-stat">
+                    <span>Win Rate:</span>
+                    <strong>
+                      {classicStats.played === 0
+                        ? "0%"
+                        : `${Math.round(
+                            (classicStats.wins / classicStats.played) * 100
+                          )}%`}
+                    </strong>
+                  </div>
 
-                    <div className="result-stat">
-                      <span>Win Rate:</span>
-                      <strong>
-                        {classicStats.played === 0
-                          ? "0%"
-                          : `${Math.round(
-                              (classicStats.wins /
-                                classicStats.played) *
-                                100
-                            )}%`}
-                      </strong>
-                    </div>
+                  <h4>Attempts</h4>
 
-                    <h4>Attempts</h4>
+                  <div className="distribution">
+                    {classicStats.attempts.map((count, i) => {
+                      const maxAttemptsCount = Math.max(
+                        ...classicStats.attempts,
+                        1
+                      );
 
-                    <div className="distribution">
-                      {classicStats.attempts.map((count, i) => {
-                        const maxAttemptsCount =
-                          Math.max(...classicStats.attempts, 1);
+                      const barWidth = `${(count / maxAttemptsCount) * 100}%`;
 
-                        const barWidth =
-                          `${(count / maxAttemptsCount) * 100}%`;
+                      return (
+                        <div key={i} className="bar-row">
+                          <span>{i + 1}</span>
 
-                        return (
-                          <div key={i} className="bar-row">
-                            <span>{i + 1}</span>
-
-                            <div className="bar-wrapper">
-                              <div
-                                className="bar"
-                                style={{ width: barWidth }}
-                              >
-                                {count}
-                              </div>
+                          <div className="bar-wrapper">
+                            <div
+                              className="bar"
+                              style={{ width: barWidth }}
+                            >
+                              {count}
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : mode === "timed" ? (
+                <>
+                  <div className="result-stat">
+                    <span>Played:</span>
+                    <strong>{timedStats.played}</strong>
+                  </div>
 
-                ) : mode === "timed" ? (
+                  <div className="result-stat">
+                    <span>Wins:</span>
+                    <strong>{timedStats.wins}</strong>
+                  </div>
 
-                  <>
-                    <div className="result-stat">
-                      <span>Played:</span>
-                      <strong>{classicStats.timedPlayed}</strong>
-                    </div>
+                  <div className="result-stat">
+                    <span>Best Time:</span>
+                    <strong>
+                      {timedStats.bestTime === null
+                        ? "-"
+                        : formatTimeStats(timedStats.bestTime)}
+                    </strong>
+                  </div>
 
-                    <div className="result-stat">
-                      <span>Wins:</span>
-                      <strong>{classicStats.timedWins}</strong>
-                    </div>
+                  <div className="result-stat">
+                    <span>Average Time:</span>
+                    <strong>
+                      {timedStats.wins === 0
+                        ? "-"
+                        : formatTimeStats(
+                            Math.round(timedStats.totalTime / timedStats.wins)
+                          )}
+                    </strong>
+                  </div>
 
-                    <div className="result-stat">
-                      <span>Best Time:</span>
-                      <strong>
-                        {classicStats.bestTime === null
-                          ? "-"
-                          : formatTime(classicStats.bestTime)}
-                      </strong>
-                    </div>
+                  <div className="result-stat">
+                    <span>Average Guesses:</span>
+                    <strong>
+                      {timedStats.wins === 0
+                        ? "-"
+                        : (timedStats.totalGuesses / timedStats.wins).toFixed(1)}
+                    </strong>
+                  </div>
 
-                    <div className="result-stat">
-                      <span>Average Time:</span>
-                      <strong>
-                        {classicStats.timedWins === 0
-                          ? "-"
-                          : formatTime(
-                              Math.round(
-                                classicStats.totalTime /
-                                classicStats.timedWins
-                              )
-                            )}
-                      </strong>
-                    </div>
-                  </>
+                  <div className="result-stat">
+                    <span>Average Penalty:</span>
+                    <strong>
+                      {timedStats.wins === 0
+                        ? "-"
+                        : `${Math.round(
+                            timedStats.totalPenalty / timedStats.wins / 1000
+                          )}s`}
+                    </strong>
+                  </div>
 
-                ) : (
+                  <div className="result-stat">
+                    <span>Clean Solves:</span>
+                    <strong>{timedStats.cleanWins}</strong>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="result-stat">
+                    <span>Played:</span>
+                    <strong>{speedStats.played}</strong>
+                  </div>
 
-                  <>
-                    <div className="result-stat">
-                      <span>Played:</span>
-                      <strong>{speedStats.played}</strong>
-                    </div>
+                  <div className="result-stat">
+                    <span>Wins:</span>
+                    <strong>{speedStats.wins}</strong>
+                  </div>
 
-                    <div className="result-stat">
-                      <span>Wins:</span>
-                      <strong>{speedStats.wins}</strong>
-                    </div>
+                  <div className="result-stat">
+                    <span>Best Time:</span>
+                    <strong>
+                      {speedStats.bestTime === null
+                        ? "-"
+                        : formatTimeStats(speedStats.bestTime)}
+                    </strong>
+                  </div>
 
-                    <div className="result-stat">
-                      <span>Best Time:</span>
-                      <strong>
-                        {speedStats.bestTime === null
-                          ? "-"
-                          : formatTime(speedStats.bestTime)}
-                      </strong>
-                    </div>
+                  <div className="result-stat">
+                    <span>Average Time:</span>
+                    <strong>
+                      {speedStats.wins === 0
+                        ? "-"
+                        : formatTimeStats(
+                            Math.round(speedStats.totalTime / speedStats.wins)
+                          )}
+                    </strong>
+                  </div>
 
-                    <div className="result-stat">
-                      <span>Average Time:</span>
-                      <strong>
-                        {speedStats.wins === 0
-                          ? "-"
-                          : formatTime(
-                              Math.round(
-                                speedStats.totalTime /
-                                speedStats.wins
-                              )
-                            )}
-                      </strong>
-                    </div>
+                  <div className="result-stat">
+                    <span>Average Guesses:</span>
+                    <strong>
+                      {speedStats.wins === 0
+                        ? "-"
+                        : (speedStats.totalGuesses / speedStats.wins).toFixed(1)}
+                    </strong>
+                  </div>
 
-                    <div className="result-stat">
-                      <span>Average Guesses:</span>
-                      <strong>
-                        {speedStats.wins === 0
-                          ? "-"
-                          : (
-                              speedStats.totalGuesses /
-                              speedStats.wins
-                            ).toFixed(1)}
-                      </strong>
-                    </div>
-                  </>
-                )}
-              </div>
+                  <div className="result-stat">
+                    <span>Average Penalty:</span>
+                    <strong>
+                      {speedStats.wins === 0
+                        ? "-"
+                        : `${Math.round(
+                            speedStats.totalPenalty / speedStats.wins / 1000
+                          )}s`}
+                    </strong>
+                  </div>
+
+                  <div className="result-stat">
+                    <span>Clean Solves:</span>
+                    <strong>{speedStats.cleanWins}</strong>
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
         {showSpeedHelp && mode === "speed" && (
         <div className="modal-overlay">
           <div className="modal">
-            <h2>🔥 Daily SpeedGuess</h2>
+            <h2>🔥 Quirdle</h2>
 
             <p>
               Find the daily word as fast as possible.
