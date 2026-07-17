@@ -783,6 +783,15 @@ function App() {
 
       <div className="main-layout">
         <div className="left-panel">
+          <select
+            className="mode-select-mobile"
+            value={mode}
+            onChange={(e) => changeMode(e.target.value)}
+          >
+            <option value="classic">Classic</option>
+            <option value="timed">Speed Run</option>
+            <option value="speed">Daily</option>
+          </select>
 
           <div className="mode-switcher vertical">
             <button
