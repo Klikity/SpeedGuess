@@ -114,6 +114,8 @@ function App() {
     return !localStorage.getItem("speedHelpShown");
   });
 
+  const [showAbout, setShowAbout] = useState(false);
+  
   const [savedGames, setSavedGames] = useState(() => {
     const saved = localStorage.getItem("savedGames");
 
@@ -756,7 +758,6 @@ function App() {
 
   const keyboardStatuses = getKeyboardStatuses();
 
-  
   const dailyCompletedToday =
     mode === "speed" &&
     lastResult &&
@@ -1129,7 +1130,69 @@ function App() {
               )}
             </div>
           )}
+
+          {showAbout && (
+            <div className="modal-overlay">
+              <div className="modal">
+
+                <h2>About Quirdle</h2>
+                <br></br>
+                <p>
+                  Hi, I'm Dominik.
+                </p>
+                <br></br>
+                <p>
+                  Quirdle started as a small side project because I
+                  enjoy word games and wanted something a little
+                  faster and more competitive than a traditional
+                  daily puzzle.
+                </p>
+                <br></br>
+                <p>
+                  The goal is simple:
+                  solve the word as quickly as possible.
+                </p>
+
+                <p>
+                  Whether you're chasing a personal best in
+                  Speed Run mode or competing against everyone
+                  in the Daily challenge, Quirdle is designed
+                  to be quick, challenging, and fun.
+                </p>
+                <br></br>
+                <p>
+                  Thanks for playing ❤️
+                </p>
+
+                <hr />
+
+                <p>
+                  If you enjoy Quirdle and would like to support
+                  future development, you can buy me a coffee ☕
+                </p>
+
+                <a
+                  className="support-link"
+                  href="https://buymeacoffee.com/YOURNAME"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                Support Quirdle
+                </a>
+                <br></br>
+
+                <button
+                  className="close-button"
+                  onClick={() => setShowAbout(false)}
+                >
+                  Close
+                </button>
+
+              </div>
+            </div>
+          )}
         </div>
+
         {showSpeedHelp && mode === "speed" && (
         <div className="modal-overlay">
           <div className="modal">
@@ -1158,6 +1221,14 @@ function App() {
         </div>
       )}
       </div>
+      <footer className="footer-links">
+        <button
+          className="footer-link"
+          onClick={() => setShowAbout(true)}
+        >
+          About
+        </button>
+      </footer>
     </div>
   );
 }

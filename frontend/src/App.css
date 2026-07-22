@@ -52,6 +52,7 @@ h1 {
 
 .tagline {
   margin-top: 8px;
+  margin-bottom: 50px;
 
   color: #8d8d8d;
 
@@ -63,8 +64,6 @@ h1 {
 
   text-align: center;
 }
-
-/* ===== LAYOUT ===== */
 
 .main-layout {
   display: grid;
@@ -562,6 +561,85 @@ h1 {
 
 .mode-select-mobile {
   display: none;
+}
+
+.footer-links {
+  width: 100%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  margin-top: 40px;
+  padding-bottom: 20px;
+}
+
+.footer-link {
+  background: none;
+  border: none;
+
+  color: #8d8d8d;
+
+  font-size: 15px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: all 0.15s ease;
+}
+
+.footer-link:hover {
+  color: #ffd700;
+
+  transform: translateY(-1px);
+}
+
+.about-button:hover {
+  transform: translateY(-2px);
+
+  box-shadow:
+    0 0 20px rgba(255,215,0,.35),
+    0 0 40px rgba(255,215,0,.15);
+}
+
+.support-link {
+  display: inline-block;
+
+  margin-top: 12px;
+
+  padding: 8px 12px;
+
+  background: #58450b;
+  border: 1px solid #b59f3b;
+  color: #ffffff;
+
+  border-radius: 16px;
+  transition: all 0.15s ease;
+
+  text-decoration: none;
+}
+
+.support-link:hover {
+  background: #b59f3b;
+}
+
+.close-button {
+  box-sizing: border-box;
+
+  margin-top: 12px;
+  padding: 8px 12px;
+
+  border: 1px solid #538d4e;
+  border-radius: 12px;
+
+  background: #2f2f35;
+  color: white;
+  
+  transition: all 0.15s ease;
+}
+
+.close-button:hover {
+  background: #538d4e;
 }
 
 @media (max-width: 1000px) {
