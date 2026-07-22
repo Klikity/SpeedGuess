@@ -66,7 +66,15 @@ function App() {
     () => localStorage.getItem("currentMode") || "classic"
   );
 
-  const [targetWord, setTargetWord] = useState(() => getRandomWord());
+  const [targetWord, setTargetWord] = useState(() => {
+    const currentMode =
+      localStorage.getItem("currentMode") || "classic";
+
+    return currentMode === "speed"
+      ? getDailyWord(answers)
+      : getRandomWord();
+  });
+  
   const [guesses, setGuesses] = useState([]);
   const [currentGuess, setCurrentGuess] = useState("");
   const [message, setMessage] = useState("");
@@ -1170,16 +1178,19 @@ function App() {
                   If you enjoy Quirdle and would like to support
                   future development, you can buy me a coffee ☕
                 </p>
-
+                
                 <a
-                  className="support-link"
-                  href="https://buymeacoffee.com/YOURNAME"
+                  href="https://www.buymeacoffee.com/quirdle"
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => setShowAbout(false)}
                 >
-                Support Quirdle
+                  <img
+                    className="bmc-button"
+                    src="https://cdn.buymeacoffee.com/buttons/v2/default-green.png"
+                    alt="Buy Me a Coffee"
+                ></img>
                 </a>
-                <br></br>
 
                 <button
                   className="close-button"

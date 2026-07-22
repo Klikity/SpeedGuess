@@ -642,6 +642,21 @@ h1 {
   background: #538d4e;
 }
 
+.bmc-button {
+  width: 160px;
+  height: auto;
+
+  display: block;
+
+  margin: 12px auto 20px;
+
+  transition: transform 0.15s ease;
+}
+
+.bmc-button:hover {
+  transform: translateY(-2px);
+}
+
 @media (max-width: 1000px) {
   .main-layout {
     display: flex;
