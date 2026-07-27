@@ -279,6 +279,9 @@ function App() {
   }
 
   function changeMode(newMode) {
+    window.gtag?.("event", "mode_change", {
+      mode: newMode,
+    });
     const currentElapsed =
       startTime && (mode === "speed" || mode === "timed") && finalTime === null
         ? Date.now() - startTime
@@ -566,6 +569,11 @@ function App() {
   }
 
   function submitGuess() {
+    window.gtag?.("event", "game_completed", {
+      mode,
+      guesses: newGuesses.length,
+    });
+
     if (gameOver) return;
 
     if (currentGuess.length !== WORD_LENGTH) {
@@ -685,6 +693,8 @@ function App() {
   }
   
   async function handleShare() {
+    window.gtag?.("event", "daily_share");
+
     if (!lastResult) {
       setMessage("No saved result to share ❌");
       return;
@@ -1183,7 +1193,10 @@ function App() {
                   href="https://www.buymeacoffee.com/quirdle"
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => setShowAbout(false)}
+                  onClick={() => {
+                    window.gtag?.("event", "support_click");
+                    setShowAbout(false);
+                  }}
                 >
                   <img
                     className="bmc-button"
@@ -1235,7 +1248,10 @@ function App() {
       <footer className="footer-links">
         <button
           className="footer-link"
-          onClick={() => setShowAbout(true)}
+          onClick={() => {
+            window.gtag?.("event", "about_open");
+            setShowAbout(true);
+          }}
         >
           About
         </button>
