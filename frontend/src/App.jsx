@@ -569,11 +569,6 @@ function App() {
   }
 
   function submitGuess() {
-    window.gtag?.("event", "game_completed", {
-      mode,
-      guesses: newGuesses.length,
-    });
-
     if (gameOver) return;
 
     if (currentGuess.length !== WORD_LENGTH) {
@@ -603,6 +598,11 @@ function App() {
         const penalty = extraGuesses * 20000;
         const totalTime = realTime + penalty;
 
+        window.gtag?.("event", "game_completed", {
+          mode,
+          guesses: newGuesses.length,
+        });
+        
         const resultData = {
           date: getTodayKey(),
           guesses: newGuesses,
