@@ -51,10 +51,33 @@ function hashString(text) {
   return hash;
 }
 
-function getDailyWord(wordList) {
-  const todayKey = getTodayKey();
-  const hash = hashString(todayKey);
+function getDailyWordForDate(wordList, dateKey) {
+  const hash = hashString(dateKey);
   return wordList[hash % wordList.length].toLowerCase();
+}
+
+function getDailyWord(wordList) {
+  return getDailyWordForDate(wordList, getTodayKey());
+}
+
+function addDaysToDateKey(dateKey, amount) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + amount);
+
+  return date.toLocaleDateString("en-CA");
+}
+
+function formatDisplayDate(dateKey) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function getRandomWord() {
@@ -62,6 +85,23 @@ function getRandomWord() {
 }
 
 function App() {
+  const creatorAccess = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    return (
+      params.get("creator") === "1" ||
+      localStorage.getItem("quirdleCreatorAccess") === "true"
+    );
+  }, []);
+
+  const [creatorMode, setCreatorMode] = useState(false);
+
+  const [creatorDate, setCreatorDate] = useState(() =>
+    addDaysToDateKey(getTodayKey(), 1)
+  );
+
+  const [creatorResult, setCreatorResult] = useState(null);
+
   const [mode, setMode] = useState(
     () => localStorage.getItem("currentMode") || "classic"
   );
@@ -137,6 +177,12 @@ function App() {
   });
 
   useEffect(() => {
+    if (creatorAccess) {
+      localStorage.setItem("quirdleCreatorAccess", "true");
+    }
+  }, [creatorAccess]);
+
+  useEffect(() => {
     localStorage.setItem(
       "savedGames",
       JSON.stringify(savedGames)
@@ -148,6 +194,8 @@ function App() {
   }, [timedStats]);
 
   useEffect(() => {
+    if (creatorMode) return;
+
     setSavedGames(prev => ({
       ...prev,
 
@@ -164,6 +212,7 @@ function App() {
       }
     }));
   }, [
+    creatorMode,
     mode,
     targetWord,
     guesses,
@@ -171,6 +220,7 @@ function App() {
     elapsedTime,
     finalTime,
     message,
+    startTime,
   ]);
 
   useEffect(() => {
@@ -222,15 +272,18 @@ function App() {
   }, [mode]);
 
   useEffect(() => {
+    if (creatorMode) return;
+
     if (
       mode === "speed" &&
       lastResult &&
       lastResult.date === getTodayKey()
     ) {
+      setTargetWord(getDailyWord(answers));
       setGuesses(lastResult.guesses);
       setFinalTime(lastResult.finalTime);
     }
-  }, [mode, lastResult]);
+  }, [mode, lastResult, creatorMode]);
 
   useEffect(() => {
     function handleKeyDown(event) {
@@ -251,6 +304,11 @@ function App() {
   }, [currentGuess, guesses, gameOver, targetWord, mode, startTime]);
 
   function resetGame(newMode = mode) {
+
+    if (creatorMode) {
+      loadCreatorPuzzle(creatorDate);
+      return;
+    }
 
     if ( newMode === "speed" && lastResult && lastResult.date === getTodayKey()) {      
       setTargetWord(getDailyWord(answers));
@@ -274,11 +332,66 @@ function App() {
     setCurrentGuess("");
     setMessage("");
 
+    setStartTime(null);
     setElapsedTime(0);
     setFinalTime(null);
   }
 
+  function loadCreatorPuzzle(dateKey) {
+    const word = getDailyWordForDate(answers, dateKey);
+
+    setCreatorDate(dateKey);
+    setTargetWord(word);
+
+    setGuesses([]);
+    setCurrentGuess("");
+    setMessage("");
+
+    setStartTime(null);
+    setElapsedTime(0);
+    setFinalTime(null);
+
+    setCreatorResult(null);
+  }
+
+  function openCreatorMode() {
+    const initialDate = creatorDate || addDaysToDateKey(getTodayKey(), 1);
+
+    setCreatorMode(true);
+    setMode("speed");
+
+    loadCreatorPuzzle(initialDate);
+
+    window.gtag?.("event", "creator_mode_opened");
+  }
+
+  function closeCreatorMode() {
+    setCreatorMode(false);
+    setCreatorResult(null);
+
+    setMode("speed");
+    setTargetWord(getDailyWord(answers));
+
+    setGuesses([]);
+    setCurrentGuess("");
+    setMessage("");
+
+    setStartTime(null);
+    setElapsedTime(0);
+    setFinalTime(null);
+
+    if (lastResult?.date === getTodayKey()) {
+      setGuesses(lastResult.guesses);
+      setFinalTime(lastResult.finalTime);
+    }
+  }
+
   function changeMode(newMode) {
+    if (creatorMode) {
+      setMessage("Exit Creator Mode before changing game modes.");
+      return;
+    }
+
     window.gtag?.("event", "mode_change", {
       mode: newMode,
     });
@@ -341,9 +454,9 @@ function App() {
     setShowSpeedHelp(false);
   }
 
-  function evaluateGuess(guess) {
+  function evaluateGuess(guess, wordToEvaluate = targetWord) {
     const result = Array(WORD_LENGTH).fill("absent");
-    const targetLetters = targetWord.split("");
+    const targetLetters = wordToEvaluate.split("");
     const guessLetters = guess.split("");
 
     const remainingLetters = {};
@@ -428,7 +541,11 @@ function App() {
   }
 
   function generateShareImage() {
-    if (!lastResult) return;
+    const result = creatorMode
+      ? creatorResult
+      : lastResult;
+
+    if (!result) return;
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
@@ -473,19 +590,19 @@ function App() {
     ctx.textAlign = "right";
 
     ctx.fillText(
-      formatTime(lastResult.finalTime),
+      formatTime(result.finalTime),
       450,
       200
     );
 
     ctx.fillText(
-      String(lastResult.guesses.length),
+      String(result.guesses.length),
       450,
       260
     );
 
     ctx.fillText(
-      `+${Math.max(0, lastResult.guesses.length - 6) * 20}s`,
+      `+${Math.max(0, result.guesses.length - 6) * 20}s`,
       450,
       320
     );
@@ -501,16 +618,19 @@ function App() {
 
     const startY = 380;
 
-    lastResult.guesses.forEach((guess, rowIndex) => {
-      const result = evaluateGuess(guess);
+    result.guesses.forEach((guess, rowIndex) => {
+      const evaluation = evaluateGuess(
+        guess,
+        result.targetWord || targetWord
+      );
 
       guess.split("").forEach((letter, colIndex) => {
         let color = "#3a3a3c";
 
-        if (result[colIndex] === "correct")
+        if (evaluation[colIndex] === "correct")
           color = "#538d4e";
 
-        if (result[colIndex] === "present")
+        if (evaluation[colIndex] === "present")
           color = "#b59f3b";
 
         const x =
@@ -545,7 +665,13 @@ function App() {
     if (!canvas) return;
 
     const link = document.createElement("a");
-    link.download = "quirdle.png";
+    const result = creatorMode
+      ? creatorResult
+      : lastResult;
+
+    link.download = result
+      ? `quirdle-${result.date}.png`
+      : "quirdle.png";
     link.href = canvas.toDataURL();
     link.click();
   }
@@ -594,25 +720,49 @@ function App() {
           ? Date.now() - startTime
           : 0;
 
-        const extraGuesses = Math.max(0, newGuesses.length - MAX_ATTEMPTS);
+        const extraGuesses = Math.max(
+          0,
+          newGuesses.length - MAX_ATTEMPTS
+        );
+
         const penalty = extraGuesses * 20000;
         const totalTime = realTime + penalty;
+
+        const resultData = {
+          date: creatorMode ? creatorDate : getTodayKey(),
+          guesses: newGuesses,
+          finalTime: totalTime,
+          targetWord,
+          creatorMode,
+        };
+
+        setFinalTime(totalTime);
+
+        if (creatorMode) {
+          setCreatorResult(resultData);
+
+          setMessage(
+            `Creator puzzle solved in ${formatTime(totalTime)}!`
+          );
+
+          window.gtag?.("event", "creator_puzzle_completed", {
+            puzzle_date: creatorDate,
+            guesses: newGuesses.length,
+          });
+
+          return;
+        }
 
         window.gtag?.("event", "game_completed", {
           mode,
           guesses: newGuesses.length,
         });
-        
-        const resultData = {
-          date: getTodayKey(),
-          guesses: newGuesses,
-          finalTime: totalTime,
-        };
 
         setLastResult(resultData);
-        localStorage.setItem("lastResult", JSON.stringify(resultData));
-
-        setFinalTime(totalTime);
+        localStorage.setItem(
+          "lastResult",
+          JSON.stringify(resultData)
+        );
 
         updateSpeedStatsAfterWin(
           totalTime,
@@ -660,7 +810,7 @@ function App() {
   function handleLetter(letter) {
     if (gameOver) return;
 
-    if (mode === "speed" && lastResult) {
+    if (mode === "speed" && !creatorMode && lastResult && lastResult.date === getTodayKey()) {
       return;
     }
 
@@ -778,8 +928,9 @@ function App() {
 
   const dailyCompletedToday =
     mode === "speed" &&
+    !creatorMode &&
     lastResult &&
-    lastResult.date === getTodayKey();
+    lastResult.date
 
   const visibleRows =
     mode === "classic"
@@ -789,6 +940,9 @@ function App() {
           guesses.length + (dailyCompletedToday ? 0 : 1)
         );
 
+  const displayedResult = creatorMode
+    ? creatorResult
+    : lastResult;
 
   return (
     <div className="app">
@@ -797,11 +951,113 @@ function App() {
       </div>
 
       <p className="tagline">
-        A daily word challenge against the clock.
+        {creatorMode
+          ? `Recording puzzle for ${formatDisplayDate(creatorDate)}`
+          : "A daily word challenge against the clock."}
       </p>
 
       <div className="main-layout">
         <div className="left-panel">
+          {creatorAccess && !creatorMode && (
+            <button
+              className="creator-open-button"
+              onClick={openCreatorMode}
+            >
+              🎬 Creator Studio
+            </button>
+          )}
+
+          {creatorMode && (
+            <div className="creator-panel">
+              <div className="creator-header">
+                <div>
+                  <span className="creator-label">
+                    CREATOR MODE
+                  </span>
+
+                  <h3>Future Daily Puzzle</h3>
+                </div>
+
+                <button
+                  className="creator-close-button"
+                  onClick={closeCreatorMode}
+                  aria-label="Exit Creator Mode"
+                >
+                  ×
+                </button>
+              </div>
+
+              <label
+                className="creator-date-label"
+                htmlFor="creator-date"
+              >
+                Puzzle date
+              </label>
+
+              <input
+                id="creator-date"
+                className="creator-date-input"
+                type="date"
+                value={creatorDate}
+                onChange={(event) => {
+                  const newDate = event.target.value;
+
+                  if (newDate) {
+                    loadCreatorPuzzle(newDate);
+                  }
+                }}
+              />
+
+              <div className="creator-date-navigation">
+                <button
+                  onClick={() =>
+                    loadCreatorPuzzle(
+                      addDaysToDateKey(creatorDate, -1)
+                    )
+                  }
+                >
+                  ← Previous
+                </button>
+
+                <button
+                  onClick={() =>
+                    loadCreatorPuzzle(
+                      addDaysToDateKey(creatorDate, 1)
+                    )
+                  }
+                >
+                  Next →
+                </button>
+              </div>
+
+              <div className="creator-date-info">
+                <span>Selected puzzle</span>
+                <strong>
+                  {formatDisplayDate(creatorDate)}
+                </strong>
+              </div>
+
+              <div className="creator-date-info">
+                <span>Earliest safe publication</span>
+                <strong>
+                  {formatDisplayDate(
+                    addDaysToDateKey(creatorDate, 1)
+                  )}
+                </strong>
+              </div>
+
+              <button
+                className="creator-reset-button"
+                onClick={() => loadCreatorPuzzle(creatorDate)}
+              >
+                Reset this attempt
+              </button>
+
+              <p className="creator-warning">
+                Creator attempts do not affect your Daily result or stats.
+              </p>
+            </div>
+          )}
           <select
             className="mode-select-mobile"
             value={mode}
@@ -853,27 +1109,40 @@ function App() {
             </div>
           )}
           
-          {mode === "speed" && lastResult && (
+          {mode === "speed" && displayedResult && (
             <div className="daily-result-card">
+              <h3>
+                {creatorMode
+                  ? "🎬 CREATOR PUZZLE COMPLETED"
+                  : "🏆 DAILY COMPLETED"}
+              </h3>
 
-              <h3>🏆 DAILY COMPLETED</h3>
+              {creatorMode && (
+                <div className="result-stat">
+                  <span>Puzzle:</span>
+                  <strong>{formatDisplayDate(displayedResult.date)}</strong>
+                </div>
+              )}
 
               <div className="result-stat">
-                <span>Time: </span>
+                <span>Time:</span>
                 <strong>
-                  {formatTime(lastResult.finalTime)}
+                  {formatTime(displayedResult.finalTime)}
                 </strong>
               </div>
 
               <div className="result-stat">
-                <span>Guesses: </span>
-                <strong>{lastResult.guesses.length}</strong>
+                <span>Guesses:</span>
+                <strong>{displayedResult.guesses.length}</strong>
               </div>
 
               <div className="result-stat">
-                <span>Penalty: </span>
+                <span>Penalty:</span>
                 <strong>
-                  +{Math.max(0, lastResult.guesses.length - 6) * 20}s
+                  +{Math.max(
+                    0,
+                    displayedResult.guesses.length - MAX_ATTEMPTS
+                  ) * 20}s
                 </strong>
               </div>
 
@@ -889,10 +1158,11 @@ function App() {
                   className="share-button"
                   onClick={downloadImage}
                 >
-                  Download
+                  {creatorMode
+                    ? "Download Creator Card"
+                    : "Download"}
                 </button>
               </div>
-
             </div>
           )}
 
@@ -940,9 +1210,14 @@ function App() {
             </div>
             <p className="message">{message}</p>
 
-            {gameOver && mode !== "speed" && (
-              <button className="restart-button" onClick={restartGame}>
-                Restart game
+            {gameOver && (mode !== "speed" || creatorMode) && (
+              <button
+                className="restart-button"
+                onClick={restartGame}
+              >
+                {creatorMode
+                  ? "Replay creator puzzle"
+                  : "Restart game"}
               </button>
             )}
           </div>
@@ -1217,7 +1492,7 @@ function App() {
           )}
         </div>
 
-        {showSpeedHelp && mode === "speed" && (
+        {showSpeedHelp && mode === "speed" && !creatorMode && (
         <div className="modal-overlay">
           <div className="modal">
             <h2>🔥 Quirdle</h2>
