@@ -72,10 +72,9 @@ function addDaysToDateKey(dateKey, amount) {
 function formatDisplayDate(dateKey) {
   const [year, month, day] = dateKey.split("-").map(Number);
 
-  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
+  return new Date(year, month - 1, day).toLocaleDateString("en-UK", {
     day: "numeric",
+    month: "numeric",
     year: "numeric",
   });
 }
@@ -951,9 +950,7 @@ function App() {
       </div>
 
       <p className="tagline">
-        {creatorMode
-          ? `Recording puzzle for ${formatDisplayDate(creatorDate)}`
-          : "A daily word challenge against the clock."}
+          A daily word challenge against the clock.
       </p>
 
       <div className="main-layout">
@@ -974,8 +971,6 @@ function App() {
                   <span className="creator-label">
                     CREATOR MODE
                   </span>
-
-                  <h3>Future Daily Puzzle</h3>
                 </div>
 
                 <button
@@ -1030,32 +1025,12 @@ function App() {
                 </button>
               </div>
 
-              <div className="creator-date-info">
-                <span>Selected puzzle</span>
-                <strong>
-                  {formatDisplayDate(creatorDate)}
-                </strong>
-              </div>
-
-              <div className="creator-date-info">
-                <span>Earliest safe publication</span>
-                <strong>
-                  {formatDisplayDate(
-                    addDaysToDateKey(creatorDate, 1)
-                  )}
-                </strong>
-              </div>
-
               <button
                 className="creator-reset-button"
                 onClick={() => loadCreatorPuzzle(creatorDate)}
               >
                 Reset this attempt
               </button>
-
-              <p className="creator-warning">
-                Creator attempts do not affect your Daily result or stats.
-              </p>
             </div>
           )}
           <select
