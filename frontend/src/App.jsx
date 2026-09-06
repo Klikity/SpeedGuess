@@ -52,8 +52,24 @@ function hashString(text) {
 }
 
 function getDailyWordForDate(wordList, dateKey) {
-  const hash = hashString(dateKey);
-  return wordList[hash % wordList.length].toLowerCase();
+  let h = 2166136261;
+
+  for (let i = 0; i < dateKey.length; i++) {
+    h ^= dateKey.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+
+  h += h << 13;
+  h ^= h >>> 7;
+  h += h << 3;
+  h ^= h >>> 17;
+  h += h << 5;
+
+  const randomNumber = (h >>> 0) / 4294967296;
+
+  const index = Math.floor(randomNumber * wordList.length);
+
+  return wordList[index].toLowerCase();
 }
 
 function getDailyWord(wordList) {
@@ -362,6 +378,18 @@ function App() {
     loadCreatorPuzzle(initialDate);
 
     window.gtag?.("event", "creator_mode_opened");
+
+    console.log(
+      Array.from({ length: 14 }, (_, i) => {
+        const date = new Date();
+        date.setUTCDate(date.getUTCDate() + i);
+
+        const dateKey = date.toISOString().slice(0, 10);
+        const word = getDailyWordForDate(answers, dateKey);
+
+        return `${i + 1}. ${dateKey} → ${word}`;
+      }).join("\n")
+    );
   }
 
   function closeCreatorMode() {
@@ -1031,6 +1059,8 @@ function App() {
               >
                 Reset this attempt
               </button>
+
+              
             </div>
           )}
           <select
