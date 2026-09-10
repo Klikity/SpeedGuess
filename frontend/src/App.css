@@ -702,6 +702,10 @@ h1 {
     overflow-x: hidden;
   }
 
+  .keyboard {
+    margin-top: 0 !important;
+  }
+
   .title-container {
     width: 100%;
     height: auto;
@@ -715,10 +719,10 @@ h1 {
 
   h1 {
     width: auto;
-    max-width: calc(100vw - 190px);
+    max-width: calc(100vw - 200px);
     margin: 0;
     transform: none;
-    font-size: clamp(30px, 9vw, 42px);
+    font-size: clamp(42px, 11vw, 52px);
     line-height: 1;
     letter-spacing: 1px;
     white-space: nowrap;
@@ -731,14 +735,17 @@ h1 {
   .main-layout {
     width: 100%;
     max-width: 100%;
-    min-height: 0;
-    margin: 0;
-    padding: 0;
+
+    min-height: calc(100dvh - 70px);
 
     display: flex;
     flex-direction: column;
+
+    justify-content: center;
     align-items: center;
-    gap: 0;
+
+    margin: 0;
+    padding: 0;
   }
 
   .left-panel {
@@ -851,26 +858,26 @@ h1 {
 
   .game-area {
     width: 100%;
+
     max-width: 500px;
-    min-height: 0;
+
+    margin: 0 auto;
 
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
 
-    margin: 8px auto 0;
-    padding: 0;
+    align-items: center;
   }
 
   .board-section {
-    width: 100%;
-    flex: none;
+    width: auto;
 
     display: flex;
     flex-direction: column;
+
     align-items: center;
-    justify-content: flex-start;
+
+    margin: 0 auto;
   }
 
   .board {
@@ -942,7 +949,7 @@ h1 {
     justify-content: center;
     gap: clamp(3px, 0.9vw, 5px);
 
-    width: 100%;
+    width: auto;
     margin: 0 0 6px;
   }
 
@@ -1037,8 +1044,8 @@ h1 {
   }
 
   .footer-links {
-    margin-top: 20px;
-    padding-bottom: max(14px, env(safe-area-inset-bottom));
+    margin-top: auto;
+    padding-bottom: 12px;
   }
 }
 
@@ -1064,8 +1071,8 @@ h1 {
 
 @media (max-width: 360px) {
   h1 {
-    max-width: calc(100vw - 160px);
-    font-size: 29px;
+    max-width: calc(100vw - 190px);
+    font-size: clamp(30px, 9vw, 42px);
   }
 
   .mode-select-mobile {
