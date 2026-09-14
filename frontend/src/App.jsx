@@ -110,6 +110,7 @@ function App() {
   }, []);
 
   const [creatorMode, setCreatorMode] = useState(false);
+  const [showCreatorPanel, setShowCreatorPanel] = useState(true);
 
   const [creatorDate, setCreatorDate] = useState(() =>
     addDaysToDateKey(getTodayKey(), 1)
@@ -176,6 +177,8 @@ function App() {
   const [showSpeedHelp, setShowSpeedHelp] = useState(() => {
     return !localStorage.getItem("speedHelpShown");
   });
+
+  const [showDailyResult, setShowDailyResult] = useState(false);
 
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
@@ -312,6 +315,8 @@ function App() {
         handleBackspace();
       } else if (/^[a-zA-Z]$/.test(key)) {
         handleLetter(key.toUpperCase());
+      } else if (creatorMode && key === "=") {
+        setShowCreatorPanel((prev) => !prev);
       }
     }
 
@@ -770,15 +775,6 @@ function App() {
         if (creatorMode) {
           setCreatorResult(resultData);
 
-          setMessage(
-            `Creator puzzle solved in ${formatTime(totalTime)}!`
-          );
-
-          window.gtag?.("event", "creator_puzzle_completed", {
-            puzzle_date: creatorDate,
-            guesses: newGuesses.length,
-          });
-
           return;
         }
 
@@ -1004,7 +1000,7 @@ function App() {
             </button>
           )}
 
-          {creatorMode && (
+          {creatorMode && showCreatorPanel && (
             <div className="creator-panel">
               <div className="creator-header">
                 <div>
@@ -1141,9 +1137,7 @@ function App() {
           </div>
 
           {(mode === "timed" ||
-            (mode === "speed" &&
-              !(lastResult &&
-                lastResult.date === getTodayKey()))) && (
+            (mode === "speed")) && (
             <div className="timer-box">
               <div className="speed-timer-label">
                 Timer
@@ -1162,61 +1156,109 @@ function App() {
           )}
           
           {mode === "speed" && displayedResult && (
-            <div className="daily-result-card">
-              <h3>
-                {creatorMode
-                  ? "🎬 CREATOR PUZZLE COMPLETED"
-                  : "🏆 DAILY COMPLETED"}
-              </h3>
+            <div className="daily-result-wrapper">
+              <button
+                className="daily-result-toggle"
+                onClick={() =>
+                  setShowDailyResult((current) => !current)
+                }
+                aria-expanded={showDailyResult}
+                aria-controls="daily-result-panel"
+              >
+                <span>🏆 Daily Completed</span>
 
-              {creatorMode && (
-                <div className="result-stat">
-                  <span>Puzzle:</span>
-                  <strong>{formatDisplayDate(displayedResult.date)}</strong>
-                </div>
+                <span
+                  className={`daily-result-chevron ${
+                    showDailyResult ? "open" : ""
+                  }`}
+                  aria-hidden="true"
+                >
+                  ▾
+                </span>
+              </button>
+
+              {showDailyResult && (
+                <>
+                  <button
+                    className="daily-result-backdrop"
+                    onClick={() => setShowDailyResult(false)}
+                    aria-label="Close Daily result"
+                  />
+
+                  <div
+                    id="daily-result-panel"
+                    className="daily-result-card daily-result-popup"
+                  >
+                    <div className="daily-result-header">
+                      <h3>🏆 DAILY COMPLETED</h3>
+
+                      <button
+                        className="daily-result-close"
+                        onClick={() => setShowDailyResult(false)}
+                        aria-label="Close Daily result"
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    {creatorMode && (
+                      <div className="result-stat">
+                        <span>Puzzle:</span>
+
+                        <strong>
+                          {formatDisplayDate(displayedResult.date)}
+                        </strong>
+                      </div>
+                    )}
+
+                    <div className="result-stat">
+                      <span>Time:</span>
+
+                      <strong>
+                        {formatTime(displayedResult.finalTime)}
+                      </strong>
+                    </div>
+
+                    <div className="result-stat">
+                      <span>Guesses:</span>
+
+                      <strong>
+                        {displayedResult.guesses.length}
+                      </strong>
+                    </div>
+
+                    <div className="result-stat">
+                      <span>Penalty:</span>
+
+                      <strong>
+                        +{Math.max(
+                          0,
+                          displayedResult.guesses.length - MAX_ATTEMPTS
+                        ) * 20}s
+                      </strong>
+                    </div>
+
+                    <div className="share-buttons">
+                      <button
+                        className="share-button"
+                        onClick={copyImageToClipboard}
+                      >
+                        Copy Result
+                      </button>
+
+                      <button
+                        className="share-button"
+                        onClick={downloadImage}
+                      >
+                        Download
+                      </button>
+                    </div>
+                  </div>
+                </>
               )}
-
-              <div className="result-stat">
-                <span>Time:</span>
-                <strong>
-                  {formatTime(displayedResult.finalTime)}
-                </strong>
-              </div>
-
-              <div className="result-stat">
-                <span>Guesses:</span>
-                <strong>{displayedResult.guesses.length}</strong>
-              </div>
-
-              <div className="result-stat">
-                <span>Penalty:</span>
-                <strong>
-                  +{Math.max(
-                    0,
-                    displayedResult.guesses.length - MAX_ATTEMPTS
-                  ) * 20}s
-                </strong>
-              </div>
-
-              <div className="share-buttons">
-                <button
-                  className="share-button"
-                  onClick={copyImageToClipboard}
-                >
-                  Copy Result
-                </button>
-
-                <button
-                  className="share-button"
-                  onClick={downloadImage}
-                >
-                  {creatorMode
-                    ? "Download Creator Card"
-                    : "Download"}
-                </button>
-              </div>
             </div>
           )}
+
 
         </div>
 
@@ -1267,9 +1309,7 @@ function App() {
                 className="restart-button"
                 onClick={restartGame}
               >
-                {creatorMode
-                  ? "Replay creator puzzle"
-                  : "Restart game"}
+                Restart game
               </button>
             )}
           </div>
