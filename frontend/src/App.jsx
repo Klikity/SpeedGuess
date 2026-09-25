@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { answers, allowedWords } from "./words";
+import { supabase } from "./supabase";
 import "./App.css";
 
 const MAX_ATTEMPTS = 6;
@@ -27,6 +28,23 @@ const defaultTimedStats = {
   cleanWins: 0,
 };
 
+const defaultStreakStats = {
+  current: 0,
+  longest: 0,
+
+  lastCompletedDate: null,
+
+  totalDailyCompletions: 0,
+
+  streaksBroken: 0,
+
+  reached3Days: false,
+  reached7Days: false,
+  reached14Days: false,
+  reached30Days: false,
+  reached100Days: false,
+};
+
 const defaultSpeedStats = {
   played: 0,
   wins: 0,
@@ -39,6 +57,29 @@ const defaultSpeedStats = {
 
 function getTodayKey() {
   return new Date().toLocaleDateString("en-CA");
+}
+
+function getStartOfWeekKey() {
+  const todayKey = getTodayKey();
+
+  const [year, month, day] =
+    todayKey.split("-").map(Number);
+
+  const date = new Date(
+    year,
+    month - 1,
+    day
+  );
+
+  // Convert Sunday=0 to Monday-based indexing.
+  const daysSinceMonday =
+    (date.getDay() + 6) % 7;
+
+  date.setDate(
+    date.getDate() - daysSinceMonday
+  );
+
+  return date.toLocaleDateString("en-CA");
 }
 
 function hashString(text) {
@@ -116,6 +157,15 @@ function App() {
     addDaysToDateKey(getTodayKey(), 1)
   );
 
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+
+  const [showNicknameModal, setShowNicknameModal] = useState(false);
+
+  const [nickname, setNickname] = useState(
+    () =>
+      localStorage.getItem("nickname") || ""
+  );
+
   const [creatorResult, setCreatorResult] = useState(null);
 
   const [mode, setMode] = useState(
@@ -155,10 +205,22 @@ function App() {
     return saved ? JSON.parse(saved) : defaultSpeedStats;
   });
 
+  const [streakStats, setStreakStats] = useState(() => {
+    const saved = localStorage.getItem("streakStats");
+    return saved ? JSON.parse(saved) : defaultStreakStats;
+  });
+
+  const [pendingResult, setPendingResult] = useState(null);
+
+  const [newPersonalBest, setNewPersonalBest] = useState(false);
+  const [showDailyAchievement, setShowDailyAchievement] = useState(false);
+
   const [lastResult, setLastResult] = useState(() => {
     const saved = localStorage.getItem("lastResult");
     return saved ? JSON.parse(saved) : null;
   });
+
+  const [dailyRank, setDailyRank] = useState(null);
 
   const allowedSet = useMemo(() => {
     const baseWords =
@@ -180,9 +242,28 @@ function App() {
 
   const [showDailyResult, setShowDailyResult] = useState(false);
 
+  const [leaderboard, setLeaderboard] = useState([]);
+
+  const [leaderboardPeriod, setLeaderboardPeriod] = useState("daily");
+
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   const [showAbout, setShowAbout] = useState(false);
+
+  const playerId = useMemo(() => {
+    let id = localStorage.getItem("playerId");
+      if (!id) {
+        id = crypto.randomUUID();
+
+        localStorage.setItem(
+          "playerId",
+          id
+        );
+      }
+
+      return id;
+    }, []);
+
   
   const [savedGames, setSavedGames] = useState(() => {
     const saved = localStorage.getItem("savedGames");
@@ -212,6 +293,17 @@ function App() {
   useEffect(() => {
     localStorage.setItem("timedStats", JSON.stringify(timedStats));
   }, [timedStats]);
+
+  useEffect(() => {
+    loadLeaderboard(leaderboardPeriod);
+  }, [leaderboardPeriod]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "nickname",
+      nickname
+    );
+  }, [nickname]);
 
   useEffect(() => {
     if (creatorMode) return;
@@ -265,6 +357,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem("speedStats", JSON.stringify(speedStats));
   }, [speedStats]);
+
+  useEffect(() => {
+    localStorage.setItem("streakStats", JSON.stringify(streakStats));
+  }, [streakStats]);
 
   useEffect(() => {
     const timerActive =
@@ -389,7 +485,7 @@ function App() {
     console.log(
       Array.from({ length: 14 }, (_, i) => {
         const date = new Date();
-        date.setUTCDate(date.getUTCDate() + i);
+        date.setUTCDate(date.getUTCDate() + i - 2);
 
         const dateKey = date.toISOString().slice(0, 10);
         const word = getDailyWordForDate(answers, dateKey);
@@ -574,6 +670,96 @@ function App() {
     }));
   }
 
+  function getStreakColor(streak) {
+    if (streak >= 100) return "#ff4444";
+
+    const maxStreak = 30;
+    const progress = Math.min(streak, maxStreak) / maxStreak;
+
+    const start = {
+      r: 83,
+      g: 141,
+      b: 78,
+    };
+
+    const end = {
+      r: 255,
+      g: 215,
+      b: 0,
+    };
+
+    const r = Math.round(
+      start.r + (end.r - start.r) * progress
+    );
+
+    const g = Math.round(
+      start.g + (end.g - start.g) * progress
+    );
+
+    const b = Math.round(
+      start.b + (end.b - start.b) * progress
+    );
+
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+
+  function updateDailyStreak() {
+    setShowDailyAchievement(true);
+
+    const today = getTodayKey();
+
+    setStreakStats((prev) => {
+      if (prev.lastCompletedDate === today) {
+        return prev;
+      }
+
+      const yesterday =
+        addDaysToDateKey(today, -1);
+
+      const current =
+        prev.lastCompletedDate === yesterday
+          ? prev.current + 1
+          : 1;
+
+      return {
+        ...prev,
+
+        current,
+
+        longest: Math.max(
+          prev.longest,
+          current
+        ),
+
+        lastCompletedDate: today,
+
+        totalDailyCompletions:
+          prev.totalDailyCompletions + 1,
+
+        streaksBroken:
+          prev.lastCompletedDate &&
+          prev.lastCompletedDate !== yesterday
+            ? prev.streaksBroken + 1
+            : prev.streaksBroken,
+
+        reached3Days:
+          prev.reached3Days || current >= 3,
+
+        reached7Days:
+          prev.reached7Days || current >= 7,
+
+        reached14Days:
+          prev.reached14Days || current >= 14,
+
+        reached30Days:
+          prev.reached30Days || current >= 30,
+
+        reached100Days:
+          prev.reached100Days || current >= 100,
+      };
+    });
+  }
+
   function generateShareImage() {
     const result = creatorMode
       ? creatorResult
@@ -728,7 +914,224 @@ function App() {
     }
   }
 
-  function submitGuess() {
+  async function submitDailyResult(
+    totalTime,
+    guessesCount,
+    penalty
+  ) {
+    const { data, error } =
+      await supabase
+        .from("daily_results")
+        .insert({
+          player_id: playerId,
+
+          nickname:
+            localStorage.getItem(
+              "nickname"
+            ) || "Anonymous",
+
+          puzzle_date:
+            getTodayKey(),
+
+          time_ms:
+            totalTime,
+
+          guesses:
+            guessesCount,
+
+          penalty,
+        })
+        .select()
+        .single();
+
+    if (error) {
+      console.error(error);
+      return null;
+    }
+
+    return data;
+  }
+
+  async function loadLeaderboard(
+    period = leaderboardPeriod
+  ) {
+    if (period === "daily") {
+      const { data, error } =
+        await supabase
+          .from("daily_results")
+          .select(
+            "id, player_id, nickname, puzzle_date, time_ms"
+          )
+          .eq(
+            "puzzle_date",
+            getTodayKey()
+          )
+          .order(
+            "time_ms",
+            { ascending: true }
+          )
+          .limit(5);
+
+      if (error) {
+        console.error(
+          "Daily leaderboard error:",
+          error
+        );
+
+        return;
+      }
+
+      setLeaderboard(data || []);
+
+      return;
+    }
+
+    const startOfWeek =
+      getStartOfWeekKey();
+
+    const { data, error } =
+      await supabase
+        .from("daily_results")
+        .select(
+          "id, player_id, nickname, puzzle_date, time_ms"
+        )
+        .gte(
+          "puzzle_date",
+          startOfWeek
+        )
+        .lte(
+          "puzzle_date",
+          getTodayKey()
+        );
+
+    if (error) {
+      console.error(
+        "Weekly leaderboard error:",
+        error
+      );
+
+      return;
+    }
+
+    /*
+    * Keep only one result per player per day.
+    * If duplicate results exist, keep their fastest.
+    */
+    const bestDailyResults = {};
+
+    (data || []).forEach((entry) => {
+      const key =
+        `${entry.player_id}-${entry.puzzle_date}`;
+
+      const existing =
+        bestDailyResults[key];
+
+      if (
+        !existing ||
+        entry.time_ms < existing.time_ms
+      ) {
+        bestDailyResults[key] = entry;
+      }
+    });
+
+    /*
+    * Combine each player's results for the week.
+    */
+    const players = {};
+
+    Object.values(
+      bestDailyResults
+    ).forEach((entry) => {
+      if (!players[entry.player_id]) {
+        players[entry.player_id] = {
+          id: entry.player_id,
+          player_id: entry.player_id,
+          nickname:
+            entry.nickname || "Anonymous",
+
+          totalTime: 0,
+          daysPlayed: 0,
+        };
+      }
+
+      players[entry.player_id].totalTime +=
+        entry.time_ms;
+
+      players[entry.player_id].daysPlayed += 1;
+
+      // Keep the player's latest available nickname.
+      players[entry.player_id].nickname =
+        entry.nickname || "Anonymous";
+    });
+
+    const weeklyLeaderboard =
+      Object.values(players)
+        .map((player) => ({
+          ...player,
+
+          averageTime: Math.round(
+            player.totalTime /
+            player.daysPlayed
+          ),
+        }))
+        .sort((a, b) => {
+          /*
+          * More completed days ranks higher.
+          * Average time breaks equal-day ties.
+          */
+          if (
+            b.daysPlayed !==
+            a.daysPlayed
+          ) {
+            return (
+              b.daysPlayed -
+              a.daysPlayed
+            );
+          }
+
+          return (
+            a.averageTime -
+            b.averageTime
+          );
+        })
+        .slice(0, 5);
+
+    setLeaderboard(
+      weeklyLeaderboard
+    );
+  }
+
+  async function loadPlayerRank() {
+    const { data, error } =
+      await supabase
+        .from("daily_results")
+        .select(
+          "player_id,time_ms,puzzle_date"
+        )
+        .eq(
+          "puzzle_date",
+          getTodayKey()
+        )
+        .order(
+          "time_ms",
+          { ascending: true }
+        );
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    const rank =
+      data.findIndex(
+        entry =>
+          entry.player_id === playerId
+      ) + 1;
+
+    setDailyRank(rank > 0 ? rank : null);
+  }
+
+  async function submitGuess() {
     if (gameOver) return;
 
     if (currentGuess.length !== WORD_LENGTH) {
@@ -789,11 +1192,70 @@ function App() {
           JSON.stringify(resultData)
         );
 
+        const isPersonalBest =
+          speedStats.bestTime === null ||
+          totalTime < speedStats.bestTime;
+
+        setNewPersonalBest(isPersonalBest);
+
         updateSpeedStatsAfterWin(
           totalTime,
           newGuesses.length,
           penalty
         );
+
+        updateDailyStreak();
+
+        if (!localStorage.getItem("nickname")) {
+
+          setPendingResult({
+            totalTime,
+            guessesCount: newGuesses.length,
+            penalty
+          });
+
+          setShowNicknameModal(true);
+
+        } else {
+
+          await submitDailyResult(
+            totalTime,
+            newGuesses.length,
+            penalty
+          );
+
+          await new Promise(
+            resolve =>
+            setTimeout(resolve, 400)
+          );
+
+          await loadLeaderboard(leaderboardPeriod);
+
+          const { data } =
+            await supabase
+              .from("daily_results")
+              .select(
+                "player_id,time_ms"
+              )
+              .eq(
+                "puzzle_date",
+                getTodayKey()
+              )
+              .order(
+                "time_ms",
+                { ascending: true }
+              );
+
+          const rank =
+            data.findIndex(
+              row =>
+                row.player_id === playerId
+            ) + 1;
+
+          setDailyRank(rank);
+
+          await loadPlayerRank();
+        }
 
         return;
       }
@@ -949,7 +1411,7 @@ function App() {
     const seconds = Math.floor((ms % 60000) / 1000);
 
     if (minutes === 0) {
-      return `${seconds}s`;
+      return `${(ms / 1000).toFixed(1)}s`;
     }
 
     return (
@@ -1113,7 +1575,7 @@ function App() {
             </div>
           )}
 
-          <div className="mode-switcher vertical">
+          <div className="mode-switcher">
             <button
               className={mode === "classic" ? "active" : ""}
               onClick={() => changeMode("classic")}
@@ -1135,7 +1597,7 @@ function App() {
               Daily
             </button>
           </div>
-
+          
           {(mode === "timed" ||
             (mode === "speed")) && (
             <div className="timer-box">
@@ -1176,6 +1638,61 @@ function App() {
                   ▾
                 </span>
               </button>
+
+              {showNicknameModal && (
+                <div className="modal-overlay">
+                  <div className="modal">
+
+                    <h2>🏆 Leaderboard Name</h2>
+
+                    <p>
+                      Choose how you'll appear
+                      on the Daily Leaderboard.
+                    </p>
+
+                    <input
+                      className="nickname-input"
+                      placeholder="Anonymous"
+                      value={nickname}
+                      maxLength={15}
+                      onChange={(e) =>
+                        setNickname(e.target.value)
+                      }
+                    />
+
+                    <button
+                      className="share-button"
+                      onClick={async () => {
+                        const finalNickname =
+                          nickname.trim() || "Anonymous";
+
+                        localStorage.setItem(
+                          "nickname",
+                          finalNickname
+                        );
+
+                        if (pendingResult) {
+
+                          await submitDailyResult(
+                            pendingResult.totalTime,
+                            pendingResult.guessesCount,
+                            pendingResult.penalty
+                          );
+
+                          await loadLeaderboard();
+
+                          setPendingResult(null);
+                        }
+
+                        setShowNicknameModal(false);
+                      }}
+                    >
+                      Save
+                    </button>
+
+                  </div>
+                </div>
+              )}
 
               {showDailyResult && (
                 <>
@@ -1218,6 +1735,15 @@ function App() {
                         {formatTime(displayedResult.finalTime)}
                       </strong>
                     </div>
+
+                    {dailyRank && (
+                      <div className="result-stat">
+                        <span>Rank Today:</span>
+                        <strong>
+                          🏆 #{dailyRank}
+                        </strong>
+                      </div>
+                    )}
 
                     <div className="result-stat">
                       <span>Guesses:</span>
@@ -1340,14 +1866,164 @@ function App() {
             </div>
           )}
         </div>
-        
+
+        {showLeaderboard && (
+          <div className="modal-overlay">
+            <div className="modal leaderboard-modal">
+
+              <h2>🏆 Leaderboard</h2>
+
+              <div className="leaderboard-tabs">
+                <button
+                  className={
+                    leaderboardPeriod === "daily"
+                      ? "active"
+                      : ""
+                  }
+                  onClick={() =>
+                    setLeaderboardPeriod("daily")
+                  }
+                >
+                  Daily
+                </button>
+
+                <button
+                  className={
+                    leaderboardPeriod === "weekly"
+                      ? "active"
+                      : ""
+                  }
+                  onClick={() =>
+                    setLeaderboardPeriod("weekly")
+                  }
+                >
+                  Weekly
+                </button>
+              </div>
+
+              <div className="leaderboard-period-label">
+                {leaderboardPeriod === "daily"
+                  ? "Today's fastest times"
+                  : "This week: completions and average time"}
+              </div>
+
+              <div className="leaderboard">
+                {leaderboard.length === 0 ? (
+                  <div className="leaderboard-empty">
+                    No results yet.
+                  </div>
+                ) : (
+                  leaderboard.map(
+                    (entry, index) => (
+                      <div
+                        key={entry.id}
+                        className="leaderboard-row"
+                      >
+                        <span className="leaderboard-rank">
+                          #{index + 1}
+                        </span>
+
+                        <span className="leaderboard-name">
+                          {entry.nickname ||
+                            "Anonymous"}
+                        </span>
+
+                        {leaderboardPeriod ===
+                        "daily" ? (
+                          <strong>
+                            {formatTimeStats(
+                              entry.time_ms
+                            )}
+                          </strong>
+                        ) : (
+                          <div className="weekly-score">
+                            <strong>
+                              {entry.daysPlayed}
+                              {entry.daysPlayed === 1
+                                ? " day"
+                                : " days"}
+                            </strong>
+
+                            <small>
+                              {formatTimeStats(
+                                entry.averageTime
+                              )} avg
+                            </small>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  )
+                )}
+              </div>
+
+              <button
+                className="close-button"
+                onClick={() =>
+                  setShowLeaderboard(false)
+                }
+              >
+                Close
+              </button>
+
+            </div>
+          </div>
+        )}
+
         <div className="stats-column">
+          <button
+            className="leaderboard-button desktop-leaderboard-button"
+            onClick={() =>
+              setShowLeaderboard(
+                !showLeaderboard
+              )
+            }
+          >
+            Leaderboards
+          </button>
+
           <button
             className="stats-button desktop-stats-button"
             onClick={() => setShowStats(!showStats)}
           >
             My Stats
           </button>
+          
+          {showDailyAchievement && (
+            <div className="modal-overlay">
+              <div className="modal achievement-modal">
+
+                <h2>🏆 Daily Completed</h2>
+
+                {newPersonalBest && (
+                  <div className="achievement-item">
+                    ⚡ New Personal Best
+                  </div>
+                )}
+
+                <div
+                  className="achievement-item"
+                  style={{
+                    color: getStreakColor(
+                      streakStats.current
+                    )
+                  }}
+                >
+                  🔥 {streakStats.current} Day Streak
+                </div>
+
+                <button
+                  className="share-button"
+                  onClick={() =>
+                    setShowDailyAchievement(false)
+                  }
+                >
+                  Nice!
+                </button>
+
+              </div>
+            </div>
+          )}
 
           <button
             className="stats-button mobile-stats-button"
@@ -1355,6 +2031,17 @@ function App() {
             aria-label="Statistics"
           >
             📊
+          </button>
+
+          <button
+            className="leaderboard-button mobile-leaderboard-button"
+            onClick={() =>
+              setShowLeaderboard(
+                !showLeaderboard
+              )
+            }
+          >
+            🏆
           </button>
 
           {showStats && (
@@ -1450,22 +2137,6 @@ function App() {
                         : (timedStats.totalGuesses / timedStats.wins).toFixed(1)}
                     </strong>
                   </div>
-
-                  <div className="result-stat">
-                    <span>Average Penalty:</span>
-                    <strong>
-                      {timedStats.wins === 0
-                        ? "-"
-                        : `${Math.round(
-                            timedStats.totalPenalty / timedStats.wins / 1000
-                          )}s`}
-                    </strong>
-                  </div>
-
-                  <div className="result-stat">
-                    <span>Clean Solves:</span>
-                    <strong>{timedStats.cleanWins}</strong>
-                  </div>
                 </>
               ) : (
                 <>
@@ -1509,19 +2180,40 @@ function App() {
                   </div>
 
                   <div className="result-stat">
-                    <span>Average Penalty:</span>
-                    <strong>
-                      {speedStats.wins === 0
-                        ? "-"
-                        : `${Math.round(
-                            speedStats.totalPenalty / speedStats.wins / 1000
-                          )}s`}
-                    </strong>
+                    <span>Current streak:</span>
+                    <strong>{streakStats.current}</strong>
                   </div>
 
                   <div className="result-stat">
-                    <span>Clean Solves:</span>
-                    <strong>{speedStats.cleanWins}</strong>
+                    <span>Longest streak:</span>
+                    <strong>{streakStats.longest}</strong>
+                  </div>
+
+                  {(streakStats.reached3Days || streakStats.reached7Days || streakStats.reached14Days || streakStats.reached30Days || streakStats.reached100Days) && (
+                    <h4>🏆 Milestones</h4>
+                  )}
+                  <div className="milestone-list">
+
+                    {streakStats.reached3Days && (
+                      <div>🔥 3 Day Streak</div>
+                    )}
+
+                    {streakStats.reached7Days && (
+                      <div>🔥 7 Day Streak</div>
+                    )}
+
+                    {streakStats.reached14Days && (
+                      <div>🔥 14 Day Streak</div>
+                    )}
+
+                    {streakStats.reached30Days && (
+                      <div>🔥 30 Day Streak</div>
+                    )}
+
+                    {streakStats.reached100Days && (
+                      <div>🏆 100 Day Legend</div>
+                    )}
+
                   </div>
                 </>
               )}
